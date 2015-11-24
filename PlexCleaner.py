@@ -90,6 +90,10 @@ default_location = ''  # /path/to/file
 # You may use 'all' for the home Users and the script will check watch status of all the users in the Plex Home (Including Guest account if enabled)
 # It is probably better to list the users explicitly
 default_homeUsers = ''  # 'Bob,Joe,Will'
+# if set to anything > 0, all videos that have been viewed more than 'progressAsWatched' percent of their 
+# total duration will be considered watched. For example, when set to 75, any video that has the view 
+# progress bar at more than 75% of its total duration will be considered watched.
+default_progressAsWatched = 0  # Progress percentage to consider video as watched
 ##########################################################################
 
 ## CUSTOMIZED SHOW SETTINGS ##############################################
@@ -288,6 +292,7 @@ def LoadSettings(opts):
     s['default_maxDays'] = opts.get('default_maxDays', default_maxDays)
     s['default_action'] = opts.get('default_action', default_action)
     s['default_watched'] = opts.get('default_watched', default_watched)
+    s['default_progressAsWatched'] = opts.get('default_progressAsWatched', default_watched)
     s['default_location'] = opts.get('default_location', default_location)
     s['default_onDeck'] = opts.get('default_onDeck', default_onDeck)
     s['default_homeUsers'] = opts.get('default_homeUsers', default_homeUsers)
@@ -501,7 +506,7 @@ def getMediaInfo(VideoNode):
                     'DaysSinceVideoLastViewed': DaysSinceVideoLastViewed, 'file': file, 'media_id': media_id}
 
 
-def checkUsersWatched(users, media_id):
+def checkUsersWatched(users, media_id, progressAsWatched):
     global home_user_tokens
     if not home_user_tokens:
         home_user_tokens = getPlexHomeUserTokens()
@@ -513,7 +518,10 @@ def checkUsersWatched(users, media_id):
             user_media_page = getURLX(Settings['Host'] + ":" + Settings['Port'] + '/library/metadata/' + media_id, token=home_user_tokens[u])
             if user_media_page:
                 video = user_media_page.getElementsByTagName("Video")[0]
-                if video.hasAttribute('viewCount') and int(video.getAttribute('viewCount')) > 0:
+                videoProgress = 0
+                if video.hasAttribute('viewOffset') and video.hasAttribute('duration'):
+                    videoProgress = int(video.getAttribute('viewOffset'))*100/int(video.getAttribute('duration'))
+                if (video.hasAttribute('viewCount') and int(video.getAttribute('viewCount')) > 0) or (progressAsWatched > 0 and videoProgress > progressAsWatched):
                     lastViewedAt = video.getAttribute('lastViewedAt')
                     if not lastViewedAt or lastViewedAt == '' or lastViewedAt == '0':
                         DaysSinceVideoLastViewed = 0
@@ -557,7 +565,7 @@ def checkMovies(doc, section):
         if movie_settings['watched']:
             if check_users:
                 movie_settings['onDeck'] = False
-                watchedDays = checkUsersWatched(check_users, m['media_id'])
+                watchedDays = checkUsersWatched(check_users, m['media_id'], movie_settings['progressAsWatched'])
                 if watchedDays == -1:
                     m['view'] = 0
                     compareDay = 0
@@ -694,7 +702,7 @@ def checkShow(showDirectory):
             if show_settings['watched']:
                 if check_users:
                     show_settings['onDeck'] = False
-                    watchedDays = checkUsersWatched(check_users, m['media_id'])
+                    watchedDays = checkUsersWatched(check_users, m['media_id'], show_settings['progressAsWatched'])
                     if watchedDays == -1:
                         m['view'] = 0
                         compareDay = 0
@@ -866,6 +874,7 @@ default_settings = {'episodes': Settings['default_episodes'],
                     'maxDays': Settings['default_maxDays'],
                     'action': Settings['default_action'],
                     'watched': Settings['default_watched'],
+                    'progressAsWatched': Settings['default_progressAsWatched'],
                     'location': Settings['default_location'],
                     'onDeck': Settings['default_onDeck'],
                     'homeUsers': Settings['default_homeUsers']
